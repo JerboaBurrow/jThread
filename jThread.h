@@ -52,158 +52,160 @@
     pool.stop() - stops (joins) threads (will interrupt threads if the have not already consumed a job on the queue)
 
 */
-class ThreadPool 
+namespace jThread
 {
 
-public:
-
-    ThreadPool(size_t n)
-    : nThreads(n), terminate(false), working(0)
-    {
-      threads.resize(n);
-      for (unsigned i = 0; i < n; i++)
-      {
-        threads[i] = std::thread(&ThreadPool::main,this);
-      }
-    }
-
-    void queueJob(const std::function<void(void)> & job)
-    {
-      {
-        std::unique_lock<std::mutex> lock(queueLock);
-        jobs.emplace(std::move(job));
-        // increment work to do/work inprogress counter
-        working++;
-      } // release mutex
-      queueCondition.notify_one();
-    }
-
-    bool busy()
-    {
-      bool b = false;
-      {
-        std::unique_lock<std::mutex> lock(queueLock);
-        // if work is still to do or still in progress pool is busy
-        b = working > 0;
-      } // release mutex
-      return b;
-    }
-
-    void wait()
-    {
-      while (busy())
-      {
-        //void
-      }
-    }
-
-    void stop()
-    {
-      {
-        std::unique_lock<std::mutex> lock(queueLock);
-        terminate = true;
-      } // release mutex
-      queueCondition.notify_all();
-      for (std::thread & t : threads)
-      {
-        t.join();
-      }
-      threads.clear();
-    }
-
-    ~ThreadPool()
-    {
-        stop();
-    }
-
-    void joinThread()
-    {
-      size_t n = size();
-      if (n > 0)
-      {
-
-        stop();
-        terminate = false;
-        threads.resize(n-1);
-
-        for (unsigned i = 0; i < n-1; i++)
-        {
-          threads[i] = std::thread(&ThreadPool::main,this);
-        }
-      }
-    }
-
-    void joinAll()
-    {
-      while (size() > 0)
-      {
-        joinThread();
-      }
-    }
-
-    void createThread()
-    {
-      size_t n = size();
-      if (n < nThreads)
-      {
-        stop();
-        terminate = false;
-        threads.resize(n+1);
-        for (unsigned i = 0; i < n+1; i++)
-        {
-          threads[i] = std::thread(&ThreadPool::main,this);
-        }
-      }
-    }
-
-    size_t size(){return threads.size();}
-
-private:
-
-  void main()
+  class ThreadPool 
   {
-    while (true)
-    {
-      std::function<void(void)> job;
+
+  public:
+
+      ThreadPool(size_t n)
+      : nThreads(n), terminate(false), working(0)
       {
-        std::unique_lock<std::mutex> lock(queueLock);
-
-        queueCondition.wait(
-          lock, [this] {return !jobs.empty() || terminate;}
-        );
-
-        if (terminate)
+        threads.resize(n);
+        for (unsigned i = 0; i < n; i++)
         {
-          return;
+          threads[i] = std::thread(&ThreadPool::main,this);
         }
+      }
 
-        job = std::move(jobs.front());
-        jobs.pop();
-      } // release mutex
-
-      job();
-
+      void queueJob(const std::function<void(void)> & job)
       {
-        std::unique_lock<std::mutex> lock(queueLock);
-        // decrement work being done/to do
-        working--;
+        {
+          std::unique_lock<std::mutex> lock(queueLock);
+          jobs.emplace(std::move(job));
+          // increment work to do/work inprogress counter
+          working++;
+        } // release mutex
+        queueCondition.notify_one();
+      }
+
+      bool busy()
+      {
+        bool b = false;
+        {
+          std::unique_lock<std::mutex> lock(queueLock);
+          // if work is still to do or still in progress pool is busy
+          b = working > 0;
+        } // release mutex
+        return b;
+      }
+
+      void wait()
+      {
+        while (busy())
+        {
+          //void
+        }
+      }
+
+      void stop()
+      {
+        {
+          std::unique_lock<std::mutex> lock(queueLock);
+          terminate = true;
+        } // release mutex
+        queueCondition.notify_all();
+        for (std::thread & t : threads)
+        {
+          t.join();
+        }
+        threads.clear();
+      }
+
+      ~ThreadPool()
+      {
+          stop();
+      }
+
+      void joinThread()
+      {
+        size_t n = size();
+        if (n > 0)
+        {
+
+          stop();
+          terminate = false;
+          threads.resize(n-1);
+
+          for (unsigned i = 0; i < n-1; i++)
+          {
+            threads[i] = std::thread(&ThreadPool::main,this);
+          }
+        }
+      }
+
+      void joinAll()
+      {
+        while (size() > 0)
+        {
+          joinThread();
+        }
+      }
+
+      void createThread()
+      {
+        size_t n = size();
+        if (n < nThreads)
+        {
+          stop();
+          terminate = false;
+          threads.resize(n+1);
+          for (unsigned i = 0; i < n+1; i++)
+          {
+            threads[i] = std::thread(&ThreadPool::main,this);
+          }
+        }
+      }
+
+      size_t size(){return threads.size();}
+
+  private:
+
+    void main()
+    {
+      while (true)
+      {
+        std::function<void(void)> job;
+        {
+          std::unique_lock<std::mutex> lock(queueLock);
+
+          queueCondition.wait(
+            lock, [this] {return !jobs.empty() || terminate;}
+          );
+
+          if (terminate)
+          {
+            return;
+          }
+
+          job = std::move(jobs.front());
+          jobs.pop();
+        } // release mutex
+
+        job();
+
+        {
+          std::unique_lock<std::mutex> lock(queueLock);
+          // decrement work being done/to do
+          working--;
+        }
       }
     }
-  }
 
-  const size_t nThreads;
+    const size_t nThreads;
 
-  bool terminate;
+    bool terminate;
 
-  std::queue<std::function<void(void)>> jobs;
-  std::vector<std::thread> threads;
+    std::queue<std::function<void(void)>> jobs;
+    std::vector<std::thread> threads;
 
-  size_t working;
+    size_t working;
 
-  std::mutex queueLock;
-  std::condition_variable queueCondition;
-  
-};
-
-
+    std::mutex queueLock;
+    std::condition_variable queueCondition;
+    
+  };
+}
 #endif /* THREADPOOL_H */
